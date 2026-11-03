@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f3d5c">
+<title>簽到記錄</title>
+<link rel="stylesheet" href="assets/base.css">
+<style>
+  .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .filters .field{margin:0}
+  .filters label{font-size:12px}
+  .filters .input,.filters select{min-height:46px;padding:10px 12px;font-size:15px}
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+  @media (min-width:900px){.stat-row{grid-template-columns:repeat(5,1fr)}}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+  .stat .k{font-size:12px;color:var(--ink-3);margin-bottom:4px}
+  .stat .v{font-size:24px;font-weight:800;color:var(--primary);font-variant-numeric:tabular-nums;line-height:1.1}
+  .stat .v small{font-size:13px;font-weight:600;color:var(--ink-3)}
+  .toolbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .toolbar .spacer{flex:1}
+  .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:14px;font-size:14px;color:var(--ink-2)}
+  .pager button{
+    border:1.5px solid var(--line);background:#fff;border-radius:9px;
+    min-width:44px;min-height:44px;font-family:inherit;font-size:15px;cursor:pointer;color:var(--primary);
+  }
+  .pager button:disabled{opacity:.4;cursor:not-allowed}
+  .sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .sync-dot.on{background:var(--ok)}
+  .sync-dot.off{background:var(--accent)}
+  .prog .nm .pct{font-size:12px;color:var(--ink-3);font-weight:600}
+
+  /* 手機：表格不要橫向溢出，隱藏次要欄位 */
+  @media (max-width:640px){
+    .table-wrap{overflow-x:visible}
+    table{font-size:13px}
+    th,td{padding:9px 8px;white-space:normal}
+    th:nth-child(6),td:nth-child(6){display:none}   /* 裝置 */
+    th:nth-child(7),td:nth-child(7){display:none}   /* 狀態 */
+    td:nth-child(1){font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-2)}
+    td:nth-child(4){color:var(--ink-2);font-size:12px}
+    .stat .v{font-size:20px}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="org" id="orgName">廠務部</div>
+  <h1>簽到記錄</h1>
+  <div class="sub" id="subLine">—</div>
+</header>
+
+<main class="wrap wide">
+
+  <div class="stat-row" id="statRow"></div>
+
+  <section class="card">
+    <div class="card-title">今日各巡查點完成進度</div>
+    <div class="progress-grid" id="progressGrid"></div>
+    <div class="note info" style="margin-top:12px">
+      <span class="ico">ℹ️</span>
+      <span id="progressNote">進度依「今天」的簽到記錄計算。</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">篩選</div>
+    <div class="filters">
+      <div class="field">
+        <label for="fDate">日期</label>
+        <input class="input" type="date" id="fDate">
+      </div>
+      <div class="field">
+        <label for="fPoint">巡查點</label>
+        <select id="fPoint"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label for="fShift">班別</label>
+        <select id="fShift">
+          <option value="">全部</option>
+          <option value="早班">早班</option>
+          <option value="晚班">晚班</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fName">姓名</label>
+        <select id="fName"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label for="fSearch">關鍵字（備註）</label>
+        <input class="input" type="text" id="fSearch" placeholder="例如：異音">
+      </div>
+    </div>
+    <div class="toolbar" style="margin-top:14px;margin-bottom:0">
+      <button class="btn btn-ghost btn-sm" id="clearBtn" type="button">清除篩選</button>
+      <button class="btn btn-ghost btn-sm" id="todayBtn" type="button">只看今天</button>
+      <div class="spacer"></div>
+      <button class="btn btn-accent btn-sm" id="csvBtn" type="button">⬇ 匯出 CSV</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">簽到明細 <span id="countBadge" class="badge" style="margin-left:auto">0 筆</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>時間</th><th>巡查點</th><th>班別</th><th>姓名</th><th>備註</th><th>裝置</th><th>狀態</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="big">📋</div>
+      <div>目前沒有符合條件的簽到記錄</div>
+    </div>
+    <div class="pager" id="pager" style="display:none">
+      <button type="button" id="prevBtn">‹</button>
+      <span id="pageInfo">1 / 1</span>
+      <button type="button" id="nextBtn">›</button>
+    </div>
+  </section>
+
+  <div class="foot">
+    <a href="index.html">← 回到簽到頁</a> · <a href="alert.html">⚠️ 未完成巡查</a> · <a href="qr.html">QR Code 產生器</a>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="assets/store.js"></script>
+<script>
+(function () {
+  "use strict";
+  var CFG = window.CHECKIN_CONFIG || {};
+  var $ = function (id) { return document.getElementById(id); };
+
+  document.title = "簽到記錄 · " + (CFG.siteTitle || "巡查簽到");
+  $("orgName").textContent = CFG.orgName || "";
+  if (!CFG.orgName) $("orgName").style.display = "none";
+
+  var PAGE = Number(CFG.recordsPageSize || 50);
+  var page = 0;
+  var filteredRows = [];
+
+  function toast(msg, kind) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = "toast show" + (kind ? " " + kind : "");
+    clearTimeout(t._tm);
+    t._tm = setTimeout(function () { t.className = "toast"; }, 2400);
+  }
+
+  /* ---------- 初始化下拉選項 ---------- */
+  var pts = QC.getPoints();
+  pts.forEach(function (p) {
+    var o = document.createElement("option");
+    o.value = p.code;
+    o.textContent = p.name;
+    $("fPoint").appendChild(o);
+  });
+
+  // 班別選項依 config 更新
+  (function () {
+    var sel = $("fShift");
+    sel.innerHTML = '<option value="">全部</option>';
+    QC.shiftLabels().forEach(function (l) {
+      var o = document.createElement("option");
+      o.value = l; o.textContent = l;
+      sel.appendChild(o);
+    });
+  })();
+
+  function rebuildNameOptions() {
+    var sel = $("fName");
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">全部</option>';
+    var names = {};
+    QC.getRecords().forEach(function (r) { names[r.name] = true; });
+    (CFG.members || []).forEach(function (m) { names[m] = true; });
+    Object.keys(names).sort(function (a, b) { return a.localeCompare(b, "zh-Hant"); })
+      .forEach(function (n) {
+        var o = document.createElement("option");
+        o.value = n; o.textContent = n;
+        sel.appendChild(o);
+      });
+    sel.value = cur;
+  }
+
+  /* ---------- 統計 ---------- */
+  function renderStats() {
+    var all = QC.getRecords();
+    var today = QC.fmtDate(new Date());
+    var todayRows = all.filter(function (r) { return r.date === today; });
+    var people = {};
+    todayRows.forEach(function (r) { people[r.name] = true; });
+    var pending = QC.queueSize();
+
+    var html = "";
+    html += '<div class="stat"><div class="k">今日簽到筆數</div><div class="v">' + todayRows.length + '</div></div>';
+    html += '<div class="stat"><div class="k">今日簽到人數</div><div class="v">' + Object.keys(people).length + '</div></div>';
+    var dayN = todayRows.filter(function (r) { return r.shift === QC.shiftLabels()[0]; }).length;
+    var nightN = todayRows.filter(function (r) { return r.shift === QC.shiftLabels()[1]; }).length;
+    html += '<div class="stat"><div class="k">' + QC.shiftLabels()[0] + ' / ' + QC.shiftLabels()[1] + '</div>' +
+            '<div class="v">' + dayN + ' <small>/</small> ' + nightN + '</div></div>';
+    html += '<div class="stat"><div class="k">巡查點數</div><div class="v">' + pts.length + '</div></div>';
+    html += '<div class="stat"><div class="k">累計筆數</div><div class="v">' + all.length + '</div></div>';
+    if (QC.useSheet()) {
+      html += '<div class="stat"><div class="k">待補送</div><div class="v">' + pending +
+              (pending ? ' <small>筆</small>' : '') + '</div></div>';
+    }
+    $("statRow").innerHTML = html;
+
+    $("subLine").textContent = QC.useSheet()
+      ? "資料來源：本機備份 + Google 試算表"
+      : "資料來源：這支手機的瀏覽器（本機模式）";
+  }
+
+  /* ---------- 進度（依班別分組） ---------- */
+  function renderProgress() {
+    var today = QC.fmtDate(new Date());
+    var box = $("progressGrid");
+    var labels = QC.shiftLabels();
+    var any = false;
+    var html = "";
+
+    labels.forEach(function (label) {
+      var prog = QC.todayProgress(today, label);
+      if (!prog.length) return;
+      any = true;
+      html += '<div style="grid-column:1/-1;font-size:12px;font-weight:700;color:var(--ink-3);' +
+              'letter-spacing:.08em;margin-top:4px">' + label + '</div>';
+      prog.forEach(function (p) {
+        var pct = Math.round(p.done / p.total * 100);
+        var dots = pts.map(function (pt) {
+          return '<span class="dot' + (p.points[pt.code] ? " on" : "") + '" title="' + pt.name + '"></span>';
+        }).join("");
+        html += '<div class="prog">' +
+          '<div class="nm"><span>' + p.name + '</span><span class="pct">' + pct + '%</span></div>' +
+          '<div class="dots">' + dots + '</div>' +
+          '<div class="cnt">' + p.done + ' / ' + p.total + ' 個巡查點</div></div>';
+      });
+    });
+
+    if (!any) {
+      box.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:26px 10px">' +
+        '<div class="big">⏳</div><div>今天還沒有任何人簽到</div></div>';
+      return;
+    }
+    box.innerHTML = html;
+  }
+
+  /* ---------- 篩選與列表 ---------- */
+  function applyFilters() {
+    var d = $("fDate").value;
+    var p = $("fPoint").value;
+    var s = $("fShift").value;
+    var n = $("fName").value;
+    var kw = $("fSearch").value.trim().toLowerCase();
+
+    filteredRows = QC.getRecords().filter(function (r) {
+      if (d && r.date !== d) return false;
+      if (p && r.point !== p) return false;
+      if (s && (r.shift || "") !== s) return false;
+      if (n && r.name !== n) return false;
+      if (kw && (r.remark || "").toLowerCase().indexOf(kw) < 0) return false;
+      return true;
+    });
+
+    // 新到舊
+    filteredRows.sort(function (a, b) {
+      if (a.ts === b.ts) return 0;
+      return a.ts < b.ts ? 1 : -1;
+    });
+
+    page = 0;
+    renderTable();
+  }
+
+  function renderTable() {
+    var tbody = $("tbody");
+    var total = filteredRows.length;
+    var pages = Math.max(1, Math.ceil(total / PAGE));
+    if (page >= pages) page = pages - 1;
+
+    var slice = filteredRows.slice(page * PAGE, page * PAGE + PAGE);
+    tbody.innerHTML = "";
+
+    $("countBadge").textContent = total + " 筆";
+    $("emptyState").style.display = total ? "none" : "block";
+    $("pager").style.display = total > PAGE ? "flex" : "none";
+    $("pageInfo").textContent = (page + 1) + " / " + pages;
+    $("prevBtn").disabled = page === 0;
+    $("nextBtn").disabled = page >= pages - 1;
+
+    slice.forEach(function (r) {
+      var tr = document.createElement("tr");
+      var syncCls = r.synced ? "on" : "off";
+      var syncTxt = r.synced ? "已同步" : (QC.useSheet() ? "待補送" : "本機");
+      tr.innerHTML =
+        '<td class="num"></td><td></td><td></td><td></td><td></td><td></td>' +
+        '<td><span class="sync-dot ' + syncCls + '"></span>' + syncTxt + '</td>';
+      var tds = tr.querySelectorAll("td");
+      tds[0].textContent = r.ts;
+      tds[1].textContent = r.pointName || QC.pointName(r.point);
+      tds[2].textContent = r.shift || "—";
+      tds[3].textContent = r.name;
+      tds[4].textContent = r.remark || "—";
+      tds[5].textContent = r.device || "—";
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ---------- 事件 ---------- */
+  ["fDate", "fPoint", "fShift", "fName"].forEach(function (id) {
+    $(id).addEventListener("change", applyFilters);
+  });
+  $("fSearch").addEventListener("input", function () {
+    clearTimeout(this._tm);
+    var self = this;
+    this._tm = setTimeout(applyFilters, 220);
+  });
+
+  $("clearBtn").addEventListener("click", function () {
+    $("fDate").value = "";
+    $("fPoint").value = "";
+    $("fShift").value = "";
+    $("fName").value = "";
+    $("fSearch").value = "";
+    applyFilters();
+  });
+
+  $("todayBtn").addEventListener("click", function () {
+    $("fDate").value = QC.fmtDate(new Date());
+    applyFilters();
+  });
+
+  $("csvBtn").addEventListener("click", function () {
+    if (!filteredRows.length) { toast("目前沒有可匯出的資料", "err"); return; }
+    var d = $("fDate").value || "all";
+    QC.downloadCSV("checkin-" + d + "-" + QC.fmtDate(new Date()) + ".csv", filteredRows);
+    toast("已匯出 " + filteredRows.length + " 筆", "ok");
+  });
+
+  $("prevBtn").addEventListener("click", function () { if (page > 0) { page--; renderTable(); } });
+  $("nextBtn").addEventListener("click", function () {
+    var pages = Math.ceil(filteredRows.length / PAGE);
+    if (page < pages - 1) { page++; renderTable(); }
+  });
+
+  /* ---------- 啟動 ---------- */
+  rebuildNameOptions();
+  renderStats();
+  renderProgress();
+  applyFilters();
+
+  if (QC.useSheet() && navigator.onLine) {
+    QC.flushQueue().then(function () {
+      rebuildNameOptions();
+      renderStats();
+      renderProgress();
+      applyFilters();
+    });
+  }
+})();
+</script>
+</body>
+</html>

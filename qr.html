@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f3d5c">
+<title>QR Code 產生器</title>
+<link rel="stylesheet" href="assets/base.css">
+<style>
+  .qr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .qr-card{
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .qr-card .hd{display:flex;align-items:center;gap:9px}
+  .qr-card .hd .code{
+    font-size:11px;font-weight:800;letter-spacing:.08em;background:var(--primary);
+    color:#fff;padding:3px 9px;border-radius:999px;
+  }
+  .qr-card .hd .nm{font-size:16px;font-weight:700}
+  .qr-card canvas{
+    width:100%;height:auto;display:block;border-radius:8px;
+    border:1px solid var(--line);background:#fff;image-rendering:pixelated;
+  }
+  .qr-card .url{
+    font-size:11px;color:var(--ink-3);word-break:break-all;line-height:1.4;
+    background:#f7fafc;border-radius:7px;padding:7px 9px;font-family:ui-monospace,monospace;
+  }
+  .qr-card .acts{display:flex;gap:8px}
+  .qr-card .acts .btn{flex:1}
+  .base-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .base-row .field{flex:1 1 320px;margin:0}
+  .base-row .btn{flex:0 0 auto;width:auto}
+
+  /* ---------- A4 告示牌 ---------- */
+  .poster{
+    width:210mm;min-height:297mm;background:#fff;color:#111;
+    padding:22mm 18mm;box-sizing:border-box;margin:0 auto 18px;
+    display:flex;flex-direction:column;align-items:center;
+    border:1px solid var(--line);border-radius:6px;
+    font-family:var(--font);
+  }
+  .poster .p-org{font-size:13pt;letter-spacing:.3em;color:#666;margin-bottom:6mm}
+  .poster .p-title{
+    font-size:40pt;font-weight:900;letter-spacing:.06em;line-height:1.1;
+    margin-bottom:4mm;text-align:center;
+  }
+  .poster .p-point{
+    font-size:26pt;font-weight:800;color:#0f3d5c;margin-bottom:2mm;text-align:center;
+  }
+  .poster .p-desc{font-size:13pt;color:#666;margin-bottom:10mm;text-align:center}
+  .poster .p-qr{
+    width:118mm;height:118mm;padding:6mm;background:#fff;
+    border:3px solid #0f3d5c;border-radius:6mm;box-sizing:border-box;
+  }
+  .poster .p-qr canvas{width:100%;height:100%;display:block}
+  .poster .p-steps{
+    display:flex;gap:6mm;margin-top:12mm;width:100%;justify-content:center;
+  }
+  .poster .p-step{
+    flex:1;max-width:52mm;text-align:center;
+  }
+  .poster .p-step .n{
+    width:11mm;height:11mm;border-radius:50%;background:#0f3d5c;color:#fff;
+    font-size:15pt;font-weight:800;display:flex;align-items:center;justify-content:center;
+    margin:0 auto 3mm;
+  }
+  .poster .p-step .t{font-size:12pt;font-weight:700;line-height:1.35}
+  .poster .p-foot{
+    margin-top:auto;padding-top:8mm;font-size:10pt;color:#888;text-align:center;
+    border-top:1px solid #ddd;width:100%;
+  }
+  .poster .p-code{
+    font-size:9pt;color:#aaa;letter-spacing:.2em;margin-top:2mm;
+  }
+
+  @media print{
+    @page{size:A4 portrait;margin:0}
+    body{background:#fff}
+    .no-print{display:none !important}
+    .poster{
+      border:none;border-radius:0;margin:0;page-break-after:always;
+      width:210mm;height:297mm;min-height:297mm;
+    }
+    .poster:last-of-type{page-break-after:auto}
+  }
+  @media (max-width:820px){
+    .poster{width:100%;min-height:auto;padding:16px}
+    .poster .p-title{font-size:26px}
+    .poster .p-point{font-size:19px}
+    .poster .p-qr{width:100%;max-width:300px;height:auto;aspect-ratio:1}
+    .poster .p-steps{gap:8px;margin-top:18px}
+    .poster .p-step .n{width:30px;height:30px;font-size:14px}
+    .poster .p-step .t{font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar no-print">
+  <div class="org" id="orgName">廠務部</div>
+  <h1>QR Code 產生器</h1>
+  <div class="sub">4 個巡查點各一張 · 可下載 PNG · 可列印 A4 告示牌</div>
+</header>
+
+<main class="wrap wide no-print">
+
+  <section class="card">
+    <div class="card-title"><span class="num">1</span>確認網址</div>
+    <div class="base-row">
+      <div class="field">
+        <label for="baseUrl">簽到頁網址（QR Code 會指向這裡）</label>
+        <input class="input" id="baseUrl" type="text" spellcheck="false">
+      </div>
+      <button class="btn btn-ghost btn-sm" id="resetBase" type="button">用目前網址</button>
+    </div>
+    <div class="note info" style="margin-top:12px">
+      <span class="ico">ℹ️</span>
+      <span>預設抓目前這個頁面的網址。若你要把 QR 印給別人掃，請確認這個網址是<strong>對外可開啟</strong>的（例如已發布的網站網址），
+      而不是只有你自己電腦打得開的本機路徑。</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title"><span class="num">2</span>四個巡查點的 QR Code</div>
+    <div class="qr-grid" id="qrGrid"></div>
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn btn-accent" id="dlAll" type="button">⬇ 一次下載全部 4 張 PNG</button>
+      <button class="btn btn-ghost" id="printBtn" type="button">🖨 列印 A4 告示牌（4 頁）</button>
+    </div>
+    <div class="note warn" style="margin-top:12px">
+      <span class="ico">⚠️</span>
+      <span>改了巡查點的 <code>code</code>（P1～P4）就必須<strong>重新產生並重印</strong> QR Code，舊的會失效。</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title"><span class="num">3</span>列印建議</div>
+    <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.9;color:var(--ink-2)">
+      <li>用 <strong>A4</strong>、100% 比例（不要選「符合頁面」），否則 QR 會縮小</li>
+      <li>印出後先用手機試掃一次，確認能開啟簽到頁再貼到現場</li>
+      <li>貼的位置建議在<strong>眼睛高度</strong>、光線充足、不會被機台遮住的地方</li>
+      <li>建議護貝或貼透明膠帶，避免油污與粉塵</li>
+      <li>QR Code 四周留白不要裁掉，否則可能掃不到</li>
+    </ul>
+  </section>
+
+  <div class="foot">
+    <a href="index.html">← 回到簽到頁</a> · <a href="records.html">簽到記錄</a> · <a href="alert.html">⚠️ 未完成巡查</a>
+  </div>
+</main>
+
+<!-- 列印用告示牌 -->
+<div id="posters"></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="assets/store.js"></script>
+<script src="assets/qrcode-generator.js"></script>
+<script>
+(function () {
+  "use strict";
+  var CFG = window.CHECKIN_CONFIG || {};
+  var $ = function (id) { return document.getElementById(id); };
+
+  document.title = "QR Code 產生器 · " + (CFG.siteTitle || "巡查簽到");
+  $("orgName").textContent = CFG.orgName || "";
+  if (!CFG.orgName) $("orgName").style.display = "none";
+
+  var pts = QC.getPoints();
+
+  /* ---------- 網址 ---------- */
+  function defaultBase() {
+    // 這個頁面是 qr.html，QR 要指向同一層的 index.html（簽到頁）
+    var u = location.href.split("?")[0].split("#")[0];
+    u = u.replace(/[^\/]*$/, "index.html");
+    return u;
+  }
+
+  function baseUrl() {
+    var v = $("baseUrl").value.trim();
+    if (!v) return defaultBase();
+    return v;
+  }
+
+  function pointUrl(code) {
+    var b = baseUrl();
+    var sep = b.indexOf("?") >= 0 ? "&" : "?";
+    return b + sep + "point=" + encodeURIComponent(code);
+  }
+
+  $("baseUrl").value = defaultBase();
+  $("resetBase").addEventListener("click", function () {
+    $("baseUrl").value = defaultBase();
+    renderAll();
+  });
+  $("baseUrl").addEventListener("change", renderAll);
+
+  /* ---------- QR 產生（高解析 canvas） ---------- */
+  function makeQR(text, px) {
+    // typeNumber 0 = 自動選擇版本；'M' 容錯率（適合列印）
+    var qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+
+    var count = qr.getModuleCount();
+    var quiet = 4;                       // 四周留白模組數（規格建議 4）
+    var total = count + quiet * 2;
+    var scale = Math.max(1, Math.floor(px / total));
+    var size = total * scale;
+
+    var cv = document.createElement("canvas");
+    cv.width = size;
+    cv.height = size;
+    var ctx = cv.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#000000";
+    for (var r = 0; r < count; r++) {
+      for (var c = 0; c < count; c++) {
+        if (qr.isDark(r, c)) {
+          ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+        }
+      }
+    }
+    cv.dataset.modules = count;
+    return cv;
+  }
+
+  /* ---------- 卡片 ---------- */
+  function renderCards() {
+    var grid = $("qrGrid");
+    grid.innerHTML = "";
+
+    pts.forEach(function (p) {
+      var url = pointUrl(p.code);
+      var card = document.createElement("div");
+      card.className = "qr-card";
+
+      var hd = document.createElement("div");
+      hd.className = "hd";
+      hd.innerHTML = '<span class="code"></span><span class="nm"></span>';
+      hd.querySelector(".code").textContent = p.code;
+      hd.querySelector(".nm").textContent = p.name;
+      card.appendChild(hd);
+
+      var cv = makeQR(url, 900);   // 900px 輸出，列印 A5/A4 都夠
+      card.appendChild(cv);
+
+      var u = document.createElement("div");
+      u.className = "url";
+      u.textContent = url;
+      card.appendChild(u);
+
+      var acts = document.createElement("div");
+      acts.className = "acts";
+      var b1 = document.createElement("button");
+      b1.className = "btn btn-primary btn-sm";
+      b1.type = "button";
+      b1.textContent = "⬇ PNG";
+      b1.addEventListener("click", function () { downloadPNG(p, cv); });
+      var b2 = document.createElement("button");
+      b2.className = "btn btn-ghost btn-sm";
+      b2.type = "button";
+      b2.textContent = "🔗 測試";
+      b2.addEventListener("click", function () { window.open(url, "_blank"); });
+      acts.appendChild(b1);
+      acts.appendChild(b2);
+      card.appendChild(acts);
+
+      grid.appendChild(card);
+    });
+  }
+
+  /* ---------- 下載 PNG ---------- */
+  function safeName(s) {
+    return String(s).replace(/[\\/:*?"<>|\s]+/g, "-");
+  }
+
+  function downloadPNG(p, canvas) {
+    canvas.toBlob(function (blob) {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "QR-" + p.code + "-" + safeName(p.name) + ".png";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+      }, 500);
+    }, "image/png");
+  }
+
+  $("dlAll").addEventListener("click", function () {
+    var cards = $("qrGrid").querySelectorAll(".qr-card");
+    cards.forEach(function (card, i) {
+      setTimeout(function () {
+        var cv = card.querySelector("canvas");
+        downloadPNG(pts[i], cv);
+      }, i * 420);   // 錯開，避免瀏覽器擋連續下載
+    });
+    toast("開始下載 4 張 PNG…", "ok");
+  });
+
+  /* ---------- A4 告示牌 ---------- */
+  function renderPosters() {
+    var box = $("posters");
+    box.innerHTML = "";
+
+    pts.forEach(function (p) {
+      var url = pointUrl(p.code);
+      var el = document.createElement("div");
+      el.className = "poster";
+
+      var org = document.createElement("div");
+      org.className = "p-org";
+      org.textContent = CFG.orgName || "";
+      if (!CFG.orgName) org.style.display = "none";
+      el.appendChild(org);
+
+      var t = document.createElement("div");
+      t.className = "p-title";
+      t.textContent = "請掃碼簽到";
+      el.appendChild(t);
+
+      var pn = document.createElement("div");
+      pn.className = "p-point";
+      pn.textContent = "巡查點：" + p.name;
+      el.appendChild(pn);
+
+      var pd = document.createElement("div");
+      pd.className = "p-desc";
+      pd.textContent = p.desc || "";
+      if (!p.desc) pd.style.display = "none";
+      el.appendChild(pd);
+
+      var qbox = document.createElement("div");
+      qbox.className = "p-qr";
+      qbox.appendChild(makeQR(url, 1200));
+      el.appendChild(qbox);
+
+      var steps = document.createElement("div");
+      steps.className = "p-steps";
+      [["1", "用手機相機<br>掃描 QR Code"], ["2", "選擇你的名字<br>與班別"], ["3", "按「簽到」<br>完成"]]
+        .forEach(function (s) {
+          var d = document.createElement("div");
+          d.className = "p-step";
+          d.innerHTML = '<div class="n"></div><div class="t"></div>';
+          d.querySelector(".n").textContent = s[0];
+          d.querySelector(".t").innerHTML = s[1];
+          steps.appendChild(d);
+        });
+      el.appendChild(steps);
+
+      var foot = document.createElement("div");
+      foot.className = "p-foot";
+      foot.innerHTML = '簽到後如需確認，請開啟 <strong>簽到記錄</strong> 頁面<br>' +
+        '<span class="p-code"></span>';
+      foot.querySelector(".p-code").textContent = p.code;
+      el.appendChild(foot);
+
+      box.appendChild(el);
+    });
+  }
+
+  $("printBtn").addEventListener("click", function () {
+    window.print();
+  });
+
+  /* ---------- toast ---------- */
+  function toast(msg, kind) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = "toast show" + (kind ? " " + kind : "");
+    clearTimeout(t._tm);
+    t._tm = setTimeout(function () { t.className = "toast"; }, 2400);
+  }
+
+  /* ---------- 啟動 ---------- */
+  function renderAll() {
+    renderCards();
+    renderPosters();
+  }
+  renderAll();
+})();
+</script>
+</body>
+</html>

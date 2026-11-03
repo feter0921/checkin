@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f3d5c">
+<meta name="format-detection" content="telephone=no">
+<title>巡查簽到</title>
+<link rel="stylesheet" href="assets/base.css">
+<style>
+  /* 首頁專用微調 */
+  .wrap{padding-top:14px}
+  #formCard{transition:opacity .2s}
+  .submitting{opacity:.55;pointer-events:none}
+  .point-hero .name{word-break:break-word}
+  .badge-point{display:inline-flex;align-items:center;gap:6px}
+  .offline-bar{
+    display:none;background:var(--warn-bg);color:var(--warn);
+    font-size:13px;padding:9px 14px;border-radius:10px;margin-bottom:12px;
+    align-items:center;gap:8px;
+  }
+  .offline-bar.show{display:flex}
+  .queue-bar{
+    display:none;background:#eef4f8;color:#2c4a5e;font-size:13px;
+    padding:9px 14px;border-radius:10px;margin-bottom:12px;
+    align-items:center;gap:8px;justify-content:space-between;
+  }
+  .queue-bar.show{display:flex}
+  .queue-bar button{
+    border:none;background:var(--primary);color:#fff;font-family:inherit;
+    font-size:13px;font-weight:700;padding:7px 13px;border-radius:8px;cursor:pointer;
+  }
+
+  /* 班別大按鈕 */
+  .shift-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .shift-btn{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    min-height:64px;padding:10px 8px;border-radius:12px;cursor:pointer;
+    border:2px solid var(--line);background:#fff;color:var(--ink-2);
+    font-family:inherit;font-size:17px;font-weight:800;transition:.15s;
+  }
+  .shift-btn .sub{font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.02em}
+  .shift-btn:active{transform:scale(.985)}
+  .shift-btn.on{
+    background:var(--primary);border-color:var(--primary);color:#fff;
+    box-shadow:0 4px 14px rgba(15,61,92,.22);
+  }
+  .shift-btn.on .sub{color:rgba(255,255,255,.72)}
+  .shift-hint{font-size:12px;color:var(--ink-3);margin-top:8px;display:flex;gap:6px;align-items:flex-start}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="org" id="orgName">廠務部</div>
+  <h1 id="siteTitle">設備巡查簽到</h1>
+  <div class="sub">掃碼即簽 · 免登入</div>
+</header>
+
+<main class="wrap">
+
+  <div class="offline-bar" id="offlineBar">
+    <span>⚠️</span><span>目前沒有網路，簽到會先存在手機裡，恢復連線後自動補送。</span>
+  </div>
+
+  <div class="queue-bar" id="queueBar">
+    <span id="queueText">有 0 筆待補送</span>
+    <button type="button" id="queueBtn">立即補送</button>
+  </div>
+
+  <!-- 巡查點 -->
+  <section class="point-hero" id="pointHero">
+    <div class="code" id="pointCode">P1</div>
+    <div class="label">巡查點</div>
+    <div class="name" id="pointName">1 號機台</div>
+    <div class="desc" id="pointDesc">A 區 · 生產線一</div>
+  </section>
+
+  <!-- 時間 -->
+  <section class="card tight">
+    <div class="clock">
+      <span class="date" id="clockDate">2026-11-03</span>
+      <span class="time" id="clockTime">00:00:00</span>
+      <span class="hint">時間取自你的手機</span>
+    </div>
+  </section>
+
+  <!-- 表單 -->
+  <section class="card" id="formCard">
+    <div class="card-title"><span class="num">1</span>選擇班別</div>
+
+    <div class="shift-row" id="shiftRow">
+      <button class="shift-btn" type="button" data-shift="早班">
+        <span class="lbl">早班</span><span class="sub" id="dayRange">08:00 起</span>
+      </button>
+      <button class="shift-btn" type="button" data-shift="晚班">
+        <span class="lbl">晚班</span><span class="sub" id="nightRange">20:00 起</span>
+      </button>
+    </div>
+    <div class="shift-hint" id="shiftHint">
+      <span>🕒</span><span id="shiftHintText">已依現在時間自動選班別，可自行更改</span>
+    </div>
+
+    <div class="card-title" style="margin-top:20px"><span class="num">2</span>選擇你的名字</div>
+
+    <div class="field">
+      <label for="nameInput">姓名 <span class="req">*</span></label>
+      <div class="combo" id="combo">
+        <input class="input" id="nameInput" type="text" autocomplete="off"
+               placeholder="點一下選名字，或直接打字搜尋" aria-autocomplete="list"
+               aria-expanded="false" aria-controls="comboList">
+        <span class="caret">▼</span>
+        <ul class="combo-list" id="comboList" role="listbox"></ul>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="remarkInput">備註 <span style="font-weight:400;color:var(--ink-3)">（選填）</span></label>
+      <textarea id="remarkInput" placeholder="例如：正常、異音、已通報…" maxlength="200"></textarea>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="note info" id="dupNote" style="display:none">
+      <span class="ico">ℹ️</span><span id="dupText"></span>
+    </div>
+
+    <div style="margin-top:18px">
+      <button class="btn btn-primary" id="submitBtn" type="button">
+        <span id="submitLabel">簽 到</span>
+      </button>
+    </div>
+
+    <div class="note info" style="margin-top:14px">
+      <span class="ico">🔒</span>
+      <span id="modeNote">資料儲存在這支手機的瀏覽器裡。</span>
+    </div>
+  </section>
+
+  <div class="foot">
+    <a href="records.html">查看簽到記錄</a> · <a href="alert.html">⚠️ 未完成巡查</a> · <a href="qr.html">QR Code 產生器</a>
+  </div>
+</main>
+
+<!-- 成功畫面 -->
+<div class="success" id="success" role="dialog" aria-modal="true" aria-labelledby="succTitle">
+  <div class="ring">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M14 34 L26 46 L50 20"/></svg>
+  </div>
+  <h2 id="succTitle">簽到成功</h2>
+  <div class="who" id="succWho">王小明</div>
+  <div class="meta" id="succPoint">1 號機台</div>
+  <div class="meta" id="succShift">早班</div>
+  <div class="meta" id="succTime">14:25:33</div>
+  <div class="stamp" id="succStamp">2026-11-03 14:25:33</div>
+  <div class="queue" id="succQueue" style="display:none"></div>
+  <div class="actions">
+    <button class="btn btn-ghost" id="againBtn" type="button">再簽一個</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="assets/store.js"></script>
+<script>
+(function () {
+  "use strict";
+  var CFG = window.CHECKIN_CONFIG || {};
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- 基本設定套用 ---------- */
+  document.title = (CFG.siteTitle || "巡查簽到");
+  $("siteTitle").textContent = CFG.siteTitle || "巡查簽到";
+  $("orgName").textContent = CFG.orgName || "";
+  if (!CFG.orgName) $("orgName").style.display = "none";
+
+  /* ---------- 取得巡查點 ---------- */
+  function param(k) {
+    var m = new RegExp("[?&]" + k + "=([^&#]*)").exec(location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : "";
+  }
+
+  var pointCode = (param("point") || param("p") || "").trim();
+  var point = QC.getPoint(pointCode);
+
+  if (!point) {
+    // 沒帶參數或代碼錯誤 → 顯示提示，但仍可簽到（記錄為「未指定」）
+    pointCode = pointCode || "NA";
+    $("pointCode").textContent = pointCode === "NA" ? "—" : pointCode;
+    $("pointName").textContent = pointCode === "NA" ? "未指定巡查點" : "未知巡查點 " + pointCode;
+    $("pointDesc").textContent = pointCode === "NA"
+      ? "請掃描巡查點上的 QR Code 以自動帶入"
+      : "此代碼不在設定檔中，請確認 QR Code 是否正確";
+    $("pointHero").style.background = "linear-gradient(160deg,#5b6b78,#7d8d9b)";
+  } else {
+    $("pointCode").textContent = point.code;
+    $("pointName").textContent = point.name;
+    $("pointDesc").textContent = point.desc || "";
+    if (!point.desc) $("pointDesc").style.display = "none";
+  }
+
+  /* ---------- 時鐘 ---------- */
+  var clockDate = $("clockDate"), clockTime = $("clockTime");
+  function tick() {
+    var d = new Date();
+    clockDate.textContent = QC.fmtDate(d);
+    clockTime.textContent = QC.fmtTime(d);
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  /* ---------- 班別 ---------- */
+  var SHIFT_CFG = CFG.shift || {};
+  var DAY_LABEL = SHIFT_CFG.dayLabel || "早班";
+  var NIGHT_LABEL = SHIFT_CFG.nightLabel || "晚班";
+  var DAY_START = Number(SHIFT_CFG.dayStart != null ? SHIFT_CFG.dayStart : 8);
+  var NIGHT_START = Number(SHIFT_CFG.nightStart != null ? SHIFT_CFG.nightStart : 20);
+
+  function hhmm(h) { return (h < 10 ? "0" + h : h) + ":00"; }
+
+  var shiftBtns = Array.prototype.slice.call(document.querySelectorAll(".shift-btn"));
+  var currentShift = "";
+  var shiftTouched = false;
+
+  // 按鈕文字依 config 更新
+  shiftBtns.forEach(function (b) {
+    var isDay = b.dataset.shift === "早班";
+    b.dataset.shift = isDay ? DAY_LABEL : NIGHT_LABEL;
+    b.querySelector(".lbl").textContent = b.dataset.shift;
+  });
+  $("dayRange").textContent = hhmm(DAY_START) + " 起";
+  $("nightRange").textContent = hhmm(NIGHT_START) + " 起";
+
+  function setShift(label, byUser) {
+    currentShift = label;
+    if (byUser) shiftTouched = true;
+    shiftBtns.forEach(function (b) {
+      b.classList.toggle("on", b.dataset.shift === label);
+      b.setAttribute("aria-pressed", b.dataset.shift === label ? "true" : "false");
+    });
+    checkDuplicate();
+  }
+
+  shiftBtns.forEach(function (b) {
+    b.addEventListener("click", function () { setShift(b.dataset.shift, true); });
+  });
+
+  // 依現在時間自動預選（config.shift.autoSelect 可關）
+  var autoShift = QC.shiftForDate(new Date());
+  if (SHIFT_CFG.autoSelect === false) {
+    setShift(autoShift, false);
+    $("shiftHintText").textContent = "請選擇你的班別";
+  } else {
+    setShift(autoShift, false);
+    $("shiftHintText").textContent = "已依現在時間自動選「" + autoShift + "」，可自行更改";
+  }
+
+  /* ---------- 姓名下拉（可搜尋） ---------- */
+  var members = (CFG.members || []).slice();
+  var nameInput = $("nameInput");
+  var comboList = $("comboList");
+  var combo = $("combo");
+  var activeIdx = -1;
+  var filtered = members.slice();
+
+  function initial(n) {
+    return n ? n.trim().charAt(0) : "?";
+  }
+
+  function renderList(kw) {
+    kw = (kw || "").trim().toLowerCase();
+    filtered = kw
+      ? members.filter(function (m) { return m.toLowerCase().indexOf(kw) >= 0; })
+      : members.slice();
+
+    comboList.innerHTML = "";
+    if (!filtered.length) {
+      var li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "找不到符合的名字";
+      comboList.appendChild(li);
+      activeIdx = -1;
+      return;
+    }
+    filtered.forEach(function (m, i) {
+      var li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.dataset.name = m;
+      li.innerHTML = '<span class="av"></span><span class="tx"></span>';
+      li.querySelector(".av").textContent = initial(m);
+      li.querySelector(".tx").textContent = m;
+      if (i === activeIdx) li.classList.add("active");
+      li.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        pick(m);
+      });
+      li.addEventListener("touchstart", function (e) {
+        // 讓 touch 也能即時選取
+        e.preventDefault();
+        pick(m);
+      }, { passive: false });
+      comboList.appendChild(li);
+    });
+  }
+
+  function openList() {
+    renderList(nameInput.value === lastPicked ? "" : nameInput.value);
+    comboList.classList.add("open");
+    nameInput.setAttribute("aria-expanded", "true");
+  }
+  function closeList() {
+    comboList.classList.remove("open");
+    nameInput.setAttribute("aria-expanded", "false");
+    activeIdx = -1;
+  }
+
+  var lastPicked = "";
+  function pick(name) {
+    nameInput.value = name;
+    lastPicked = name;
+    closeList();
+    checkDuplicate();
+  }
+
+  nameInput.addEventListener("focus", function () {
+    if (nameInput.value === lastPicked) nameInput.select();
+    openList();
+  });
+  nameInput.addEventListener("input", function () {
+    lastPicked = "";
+    activeIdx = -1;
+    openList();
+    checkDuplicate();
+  });
+  nameInput.addEventListener("keydown", function (e) {
+    var items = comboList.querySelectorAll("li[data-name]");
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!comboList.classList.contains("open")) { openList(); return; }
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      renderList(nameInput.value === lastPicked ? "" : nameInput.value);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      renderList(nameInput.value === lastPicked ? "" : nameInput.value);
+    } else if (e.key === "Enter") {
+      if (comboList.classList.contains("open") && activeIdx >= 0 && filtered[activeIdx]) {
+        e.preventDefault();
+        pick(filtered[activeIdx]);
+      } else if (comboList.classList.contains("open")) {
+        e.preventDefault();
+        closeList();
+      }
+    } else if (e.key === "Escape") {
+      closeList();
+    }
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!combo.contains(e.target)) closeList();
+  });
+
+  /* ---------- 備註 chips ---------- */
+  var remarkInput = $("remarkInput");
+  var chipsBox = $("chips");
+  (CFG.remarkPresets || []).forEach(function (r) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = r;
+    b.addEventListener("click", function () {
+      var cur = remarkInput.value.trim();
+      if (b.classList.contains("on")) {
+        b.classList.remove("on");
+        remarkInput.value = cur.replace(r, "").replace(/^[、,，\s]+|[、,，\s]+$/g, "").trim();
+      } else {
+        b.classList.add("on");
+        remarkInput.value = cur ? cur + "、" + r : r;
+      }
+    });
+    chipsBox.appendChild(b);
+  });
+
+  /* ---------- 重複簽到檢查 ---------- */
+  var dupNote = $("dupNote"), dupText = $("dupText");
+  var dupRecord = null;
+
+  function checkDuplicate() {
+    // 初始化階段（DOM 變數尚未賦值）先跳過，避免 TypeError
+    if (!nameInput || !dupNote) return;
+    var nm = nameInput.value.trim();
+    dupRecord = null;
+    if (!nm) { dupNote.style.display = "none"; return; }
+    var today = QC.fmtDate(new Date());
+    var found = QC.findDuplicate(nm, pointCode, today, currentShift);
+    if (found) {
+      dupRecord = found;
+      dupText.textContent = "你今天" + (found.shift || currentShift) + " " + found.time.slice(0, 5) +
+        " 已在「" + (found.pointName || QC.pointName(found.point)) + "」簽到過了。";
+      dupNote.style.display = "flex";
+      dupNote.className = "note warn";
+    } else {
+      dupNote.style.display = "none";
+    }
+  }
+
+  /* ---------- 送出 ---------- */
+  var submitBtn = $("submitBtn");
+  var formCard = $("formCard");
+  var submitting = false;
+
+  function toast(msg, kind) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = "toast show" + (kind ? " " + kind : "");
+    clearTimeout(t._tm);
+    t._tm = setTimeout(function () { t.className = "toast"; }, 2600);
+  }
+
+  function doSubmit() {
+    if (submitting) return;
+    var nm = nameInput.value.trim();
+
+    if (!nm) {
+      toast("請先選擇你的名字", "err");
+      nameInput.focus();
+      return;
+    }
+    if (members.length && members.indexOf(nm) < 0) {
+      // 不在名單內 → 允許但提醒
+      if (!confirm("「" + nm + "」不在人員名單中，仍要送出嗎？")) return;
+    }
+    if (dupRecord && !CFG.allowDuplicateOverride) {
+      toast("你今天" + (dupRecord.shift || currentShift) + "已在「" +
+        (dupRecord.pointName || QC.pointName(dupRecord.point)) + "」簽到過了", "err");
+      return;
+    }
+
+    submitting = true;
+    formCard.classList.add("submitting");
+    submitBtn.disabled = true;
+    $("submitLabel").textContent = "送出中…";
+
+    var now = new Date();
+    var rec = {
+      id: QC.uid(),
+      ts: QC.fmtStamp(now),
+      date: QC.fmtDate(now),
+      time: QC.fmtTime(now),
+      point: pointCode,
+      pointName: point ? point.name : (pointCode === "NA" ? "未指定" : pointCode),
+      shift: currentShift,
+      name: nm,
+      remark: remarkInput.value.trim(),
+      device: QC.deviceInfo(),
+      synced: false
+    };
+
+    QC.submit(rec).then(function (res) {
+      submitting = false;
+      formCard.classList.remove("submitting");
+      submitBtn.disabled = false;
+      $("submitLabel").textContent = "簽 到";
+
+      QC.setLastName(nm);
+      showSuccess(rec, res);
+      refreshQueueBar();
+    }).catch(function (err) {
+      submitting = false;
+      formCard.classList.remove("submitting");
+      submitBtn.disabled = false;
+      $("submitLabel").textContent = "簽 到";
+      toast("送出失敗，請再試一次", "err");
+    });
+  }
+
+  submitBtn.addEventListener("click", doSubmit);
+  remarkInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSubmit(); }
+  });
+
+  /* ---------- 成功畫面 ---------- */
+  var success = $("success");
+  var autoTimer = null;
+
+  function showSuccess(rec, res) {
+    $("succWho").textContent = rec.name;
+    $("succPoint").textContent = rec.pointName;
+    $("succShift").textContent = rec.shift || "";
+    $("succTime").textContent = rec.time;
+    $("succStamp").textContent = rec.ts;
+
+    var q = $("succQueue");
+    if (res && res.queued) {
+      q.style.display = "block";
+      q.textContent = res.reason === "offline"
+        ? "目前離線，已存在手機裡，恢復網路後會自動補送。"
+        : "暫時無法連上試算表，已存在手機裡，稍後會自動補送。";
+    } else {
+      q.style.display = "none";
+    }
+
+    success.classList.add("show");
+    document.body.style.overflow = "hidden";
+
+    var secs = Number(CFG.autoResetSeconds || 0);
+    if (secs > 0) {
+      clearTimeout(autoTimer);
+      autoTimer = setTimeout(resetForm, secs * 1000);
+    }
+  }
+
+  function resetForm() {
+    clearTimeout(autoTimer);
+    success.classList.remove("show");
+    document.body.style.overflow = "";
+    nameInput.value = "";
+    lastPicked = "";
+    remarkInput.value = "";
+    Array.prototype.forEach.call(chipsBox.children, function (c) { c.classList.remove("on"); });
+    dupNote.style.display = "none";
+    dupRecord = null;
+    // 回到表單時重新依現在時間預選班別（若人員沒手動改過）
+    if (!shiftTouched) setShift(QC.shiftForDate(new Date()), false);
+    tick();
+    window.scrollTo(0, 0);
+  }
+
+  $("againBtn").addEventListener("click", resetForm);
+
+  /* ---------- 離線 / 佇列 ---------- */
+  var offlineBar = $("offlineBar");
+  var queueBar = $("queueBar");
+
+  function refreshOnline() {
+    offlineBar.classList.toggle("show", !navigator.onLine);
+  }
+
+  function refreshQueueBar() {
+    var n = QC.queueSize();
+    if (n > 0 && QC.useSheet()) {
+      $("queueText").textContent = "有 " + n + " 筆待補送";
+      queueBar.classList.add("show");
+    } else {
+      queueBar.classList.remove("show");
+    }
+  }
+
+  $("queueBtn").addEventListener("click", function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "補送中…";
+    QC.flushQueue().then(function (r) {
+      btn.disabled = false;
+      btn.textContent = "立即補送";
+      refreshQueueBar();
+      toast(r.sent ? "已補送 " + r.sent + " 筆" : "目前沒有可補送的資料",
+            r.sent ? "ok" : "");
+    });
+  });
+
+  window.addEventListener("online", function () {
+    refreshOnline();
+    QC.flushQueue().then(refreshQueueBar);
+  });
+  window.addEventListener("offline", refreshOnline);
+
+  /* ---------- 儲存模式說明 ---------- */
+  if (QC.useSheet()) {
+    $("modeNote").textContent = "簽到資料會送到 Google 試算表，並在這支手機保留一份備份。";
+  } else if (String(CFG.storageMode).toLowerCase() === "sheet") {
+    $("modeNote").textContent = "尚未設定 Apps Script 網址，目前資料只存在這支手機的瀏覽器裡。";
+  } else {
+    $("modeNote").textContent = "資料儲存在這支手機的瀏覽器裡（本機模式）。要集中收集請改用 Google 試算表模式。";
+  }
+
+  /* ---------- 初始化 ---------- */
+  var remembered = QC.getLastName();
+  if (remembered && members.indexOf(remembered) >= 0) {
+    nameInput.value = remembered;
+    lastPicked = remembered;
+  }
+  refreshOnline();
+  refreshQueueBar();
+  if (QC.useSheet() && navigator.onLine) {
+    QC.flushQueue().then(refreshQueueBar);
+  }
+  checkDuplicate();
+})();
+</script>
+</body>
+</html>
